@@ -404,8 +404,10 @@ def _viscm_editor_axes():
 
 
 class viscm_editor(object):
-    def __init__(self, min_Jp=15, max_Jp=95, xp=None, yp=None):
+    def __init__(self, maptype='sequential', min_Jp=15, max_Jp=95, xp=None, yp=None):
         from .bezierbuilder import BezierModel, BezierBuilder
+
+        self.maptype = maptype
 
         axes = _viscm_editor_axes()
 
@@ -457,7 +459,8 @@ class viscm_editor(object):
         self.bezier_model = BezierModel(xp, yp)
         self.cmap_model = BezierCMapModel(self.bezier_model,
                                           self.jp_min_slider.val,
-                                          self.jp_max_slider.val)
+                                          self.jp_max_slider.val,
+                                          self.maptype)
         self.highlight_point_model = HighlightPointModel(self.cmap_model, 0.5)
 
         self.bezier_builder = BezierBuilder(axes['bezier'], self.bezier_model)
@@ -470,6 +473,8 @@ class viscm_editor(object):
         #draw_pure_hue_angles(axes['bezier'])
         axes['bezier'].set_xlim(-100, 100)
         axes['bezier'].set_ylim(-100, 100)
+
+        axes['bezier'].set_title(self.maptype)
 
         self.cmap_view = CMapView(axes['cm'], self.cmap_model)
         self.cmap_highlighter = HighlightPointBuilder(
@@ -558,10 +563,11 @@ class viscm_editor(object):
         self.cmap_model.set_Jp_minmax(smallest, largest)
 
 class BezierCMapModel(object):
-    def __init__(self, bezier_model, min_Jp, max_Jp):
+    def __init__(self, bezier_model, min_Jp, max_Jp, maptype):
         self.bezier_model = bezier_model
         self.min_Jp = min_Jp
         self.max_Jp = max_Jp
+        self.maptype = maptype
         self.trigger = Trigger()
 
         self.bezier_model.trigger.add_callback(self.trigger.fire)
@@ -577,7 +583,11 @@ class BezierCMapModel(object):
         return Jp, ap, bp
 
     def get_Jpapbp(self, num=200):
-        return self.get_Jpapbp_at(np.linspace(0, 1, num))
+        if self.maptype.lower() == 'sequential':
+            return self.get_Jpapbp_at(np.linspace(0, 1, num))
+        elif self.maptype.lower() == 'diverging':
+            vec = np.concatenate((np.linspace(0, 1, np.floor(num/2.)), np.linspace(1, 0, np.floor(num/2.))))
+            return self.get_Jpapbp_at(vec)
 
     def get_sRGB(self, num=200):
         # Return sRGB and out-of-gamut mask
@@ -780,6 +790,8 @@ def main(argv):
     #      (file.py must define a global named "test_cm")
     #   python -m viscm view "matplotlib builtin colormap"
     #   python -m viscm view --save=foo.png ...
+    #   python -m viscm --maptype='sequential' view ...
+    #   python -m viscm --maptype='diverging' view ...
 
     parser = argparse.ArgumentParser(
         prog="python -m viscm",
@@ -800,6 +812,10 @@ def main(argv):
                         help="Immediately save visualization to a file (view-mode only).")
     parser.add_argument("--quit", default=False, action="store_true",
                         help="Quit immediately after starting (useful with --save).")
+    parser.add_argument("--maptype", metavar="MAPTYPE",
+                        choices=["sequential", "diverging"],
+                        default="sequential",
+                        help="Create a sequential or diverging colormap.")
     args = parser.parse_args(argv)
 
     params = {}
@@ -836,7 +852,7 @@ def main(argv):
         if params is None:
             sys.exit("Sorry, I don't know how to edit the specified colormap")
         # Hold a reference so it doesn't get GC'ed
-        v = viscm_editor(**params)
+        v = viscm_editor(args.maptype, **params)
     else:
         raise RuntimeError("can't happen")
 
